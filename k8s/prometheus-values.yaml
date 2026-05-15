@@ -1,0 +1,48 @@
+# k8s/prometheus-values.yaml
+# Install with: helm install prometheus prometheus-community/kube-prometheus-stack -f prometheus-values.yaml
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    additionalScrapeConfigs:
+      - job_name: 'vllm-metrics'
+        static_configs:
+          - targets:
+            - 'svc-deepseek.llm-platform.svc.cluster.local:8000'
+            - 'svc-llama.llm-platform.svc.cluster.local:8000'
+        metrics_path: /metrics
+        scrape_interval: 15s
+
+  # Enable GPU monitoring (DCGM) if using NVIDIA GPUs
+  dcgmExporter:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+grafana:
+  additionalDataSources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus-operated:9090
+      access: proxy
+      isDefault: true
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      vllm-dashboard:
+        url: https://raw.githubusercontent.com/vllm-project/vllm/main/examples/grafana/dashboard.json
