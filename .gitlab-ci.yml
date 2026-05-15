@@ -1,0 +1,58 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_REGISTRY: $CI_REGISTRY  # GitLab Container Registry
+  K8S_NAMESPACE: llm-platform
+
+build-worker:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - docker build -f docker/worker.Dockerfile -t $DOCKER_REGISTRY/llm-worker:latest .
+    - docker push $DOCKER_REGISTRY/llm-worker:latest
+  only:
+    - main
+  tags:
+    - docker
+
+build-gateway:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - docker build -f docker/gateway.Dockerfile -t $DOCKER_REGISTRY/gateway:latest .
+    - docker push $DOCKER_REGISTRY/gateway:latest
+  only:
+    - main
+  tags:
+    - docker
+
+test-gateway:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - pip install pytest httpx
+  script:
+    - cd gateway
+    - pytest tests/ -v
+  only:
+    - main
+
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl set image deployment/llm-deepseek vllm=$DOCKER_REGISTRY/llm-worker:latest -n $K8S_NAMESPACE
+    - kubectl set image deployment/gateway gateway=$DOCKER_REGISTRY/gateway:latest -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/llm-deepseek -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/gateway -n $K8S_NAMESPACE
+  only:
+    - main
+  environment:
+    name: production
